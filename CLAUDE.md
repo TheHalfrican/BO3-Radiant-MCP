@@ -188,6 +188,7 @@ Fill these in as they are created. Keep this list current.
 - Install the pre-push hook (once per clone): `git config core.hooksPath scripts/hooks`
 - Push: `git push origin main` (Gitea mirrors to GitHub)
 - Inject into running Radiant: `TODO`
+- Capture process command lines (RE helper, keep the output out of the repo): `pwsh scripts/watch-processes.ps1 -OutFile <scratch file> -Seconds 1800`
 
 ## Session checklist
 

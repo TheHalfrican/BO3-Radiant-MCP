@@ -89,10 +89,53 @@ Implications:
 - With only **Run** ticked, clicking Build in the Launcher does nothing: no child process starts and no error is shown.
 - Cause: `modlauncher.exe` launches `%1/BlackOps3.exe` where `%1` is `TA_GAME_PATH` (the Mod Tools root). Strings in `modlauncher.exe`: `%1/BlackOps3.exe`, `+devmap`, `-fs_game`, `fs_game`, `%1/usermaps/%2`, `TA_GAME_PATH`. `BlackOps3.exe` does not exist under the Mod Tools root, so Run silently fails. This is Steam's default install of app 455130, not a user mistake.
 - Fix applied with Noah's approval: a directory junction `BO3_GAME_ROOT/usermaps` -> `BO3_ROOT/usermaps` (`New-Item -ItemType Junction`). No existing files changed; removing the junction fully reverts it. The game folder now sees built zones (`usermaps/zm_mcp_test/zone/zm_mcp_test.ff`, `.xpak`).
-- `game_launch_map` must therefore launch the game itself from `BO3_GAME_ROOT` rather than drive the Launcher's Run. Expected command: `BlackOps3.exe +devmap <mapname>` (inferred from strings, `VERIFY` by launching).
+- `game_launch_map` must therefore launch the game itself rather than drive the Launcher's Run.
+
+### Launching the game directly (2026-10-02, partially verified)
+
+- Running `BO3_GAME_ROOT/BlackOps3.exe +devmap zm_mcp_test` directly: the process exits within seconds and **Steam relaunches it** (Steam restart-if-necessary behaviour). Steam preserved the arguments.
+- On this machine Steam's BO3 launch options wrap the game in Noah's own `BO3Z_Tool_AutoAttach\Trigger.cmd %command%`. The relaunched process was `blackops3.exe  +devmap zm_mcp_test` (PID seen, ~1.3 GB working set). Any launch tool must tolerate a launch-option wrapper sitting between Steam and the game.
+- Plan for `game_launch_map`: `steam.exe -applaunch 311210 +devmap <map>` (`VERIFY`), so launch options apply and no exit-and-relaunch happens.
+- **Result: `+devmap` did not take effect.** The game showed the "press Enter to start" screen and then stopped at the main menu, not in the map. The in-game console (`~`) would not open either.
+- Not yet known why. Things to try next session, one at a time:
+  1. From the main menu, load the map through the in-game UI (Zombies -> custom maps / Mods menu), to confirm the built zone is valid and visible through the junction at all.
+  2. `steam.exe -applaunch 311210 +devmap zm_mcp_test` instead of the direct exe (the restart may drop or reorder args, or the wrapper may).
+  3. Launch with the Steam launch options temporarily cleared, to rule out the AutoAttach wrapper (ask Noah first; it is his setup).
+  4. Check whether the console needs to be enabled (e.g. a `+set` dvar on the command line) before `devmap` can run.
+  5. Look for a game console log under `BO3_GAME_ROOT` (e.g. `players/`, `boiii_players/`, `console_mp.log`-style files) written during the launch.
+
+### Launcher build command lines (2026-10-02, verified by process capture)
+
+Captured with `scripts/watch-processes.ps1` while Noah built `zm_mcp_test` from the ZM template with Compile + Light + Link ticked. `<BO3_ROOT>` stands for the Mod Tools root. Note the Launcher emits doubled backslashes and a stray `\/` after the root; the tools accept them.
+
+Steam starts the tools with `steam.exe -silent -applaunch 455130`, which runs `cmd /c modtools_launcher.bat` (sets `TA_*` via `setx`), which runs `bin\modlauncher.exe`. On start `modlauncher.exe` runs `gdtdb\gdtdb.exe /update`.
+
+| Step | Parent | Command line |
+|---|---|---|
+| Pre-build | modlauncher | `<BO3_ROOT>\gdtdb\gdtdb.exe /update` |
+| Compile | modlauncher | `<BO3_ROOT>\bin\cod2map64.exe -platform pc -navmesh -navvolume -loadFrom "<BO3_ROOT>\map_source\zm\zm_mcp_test.map" "<BO3_ROOT>\share\raw\maps\zm\zm_mcp_test.d3dbsp"` |
+| Light | modlauncher | `<BO3_ROOT>\bin\radiant_modtools.exe -ledSilent +high +localprobes +forceclean +recompute "<BO3_ROOT>/map_source/zm/zm_mcp_test.map"` |
+| (inside Light) | Radiant | `<BO3_ROOT>\gdtDB\gdtdb.exe /verbose /update` |
+| Link | modlauncher | `<BO3_ROOT>\bin\linker_modtools.exe -language english -modsource zm_mcp_test` |
+| (inside Link) | linker | `<BO3_ROOT>\bin\UmbraConvert -input_scene=c:\UmbraDebug\zm_mcp_test_linker.scene -input_params=c:\UmbraDebug\zm_mcp_test_linker.params -output_tome=c:\UmbraDebug\zm_mcp_test.tome -compress -use_all_cores -disable_sndbs` |
+| (inside Link) | linker | `<BO3_ROOT>\sound\snd_convert.exe pc usermaps\zm_mcp_test usermaps\zm_mcp_test zone_source usermaps\zm_mcp_test all zm_mcp_test` |
+| (inside Link) | linker | `<BO3_ROOT>\bin\linker_modtools.exe -language english -modsource -spawnedchild -localized zm_mcp_test` |
+| (inside child linker) | linker | `<BO3_ROOT>\sound\snd_convert.exe pc usermaps\zm_mcp_test usermaps\zm_mcp_test zone_source usermaps\zm_mcp_test english zm_mcp_test` |
+
+Notes:
+- **Lighting is Radiant itself** running headless (`-ledSilent`). The injector must not attach to, or be confused by, a lighting-mode Radiant process. Tell them apart by the `-ledSilent` argument.
+- The compile output goes to `share\raw\maps\zm\<map>.d3dbsp` under the Mod Tools root.
+- UmbraConvert uses a hard-coded `c:\UmbraDebug\` scratch folder.
+- `snd_convert` paths are relative, so the linker's working directory is the Mod Tools root (`VERIFY` when writing the wrapper).
+- Timing on this machine for the empty ZM template: compile + light ~35 s, link ~1.5 min.
+- Build output: `usermaps/zm_mcp_test/zone/` with `zm_mcp_test.ff` (24 MB), `zm_mcp_test.xpak` (146 MB), `en_zm_mcp_test.ff`, `en_zm_mcp_test.xpak`, `loadingimage.png`, `previewimage.png`, `snd/`.
+- The Launcher's "New" map (ZM template) created `map_source/zm/zm_mcp_test.map` and `usermaps/zm_mcp_test/`.
 
 ### Open questions
 
 - How does the game find maps built in the Mod Tools `usermaps/` folder when the two installs are separate? `BO3_GAME_ROOT` has no `usermaps/` or `mods/` folder. Check what the Launcher passes on the command line, or whether it relies on an environment variable or a junction (`VERIFY`).
 - The game folder also contains third-party clients (`t7x.exe`, `ezzboiii.exe`, `boiii_players`). Note them for `game_launch_map`; do not assume stock `BlackOps3.exe` is the launch path.
-- Still to do (needs Noah at the keyboard): Launcher command lines for compile, light, and link; whether Radiant reloads a `.map` changed on disk; how "Run Map" finds the game executable with the split install.
+- Still to do (needs Noah at the keyboard), to close Phase 0:
+  1. Get `zm_mcp_test` loading in game (see "Launching the game directly" above).
+  2. Whether Radiant reloads a `.map` changed on disk: Noah opens `zm_mcp_test` in Radiant, Claude backs the map up to `backups/` and makes a harmless on-disk edit, Noah reports whether Radiant notices. Close Radiant without saving afterwards.
+  3. Optional: search ModMe and Mappers United for BO3 Radiant prior art.
