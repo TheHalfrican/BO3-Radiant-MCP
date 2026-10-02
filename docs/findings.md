@@ -84,6 +84,13 @@ Implications:
 - [iw3xo-radiant](https://github.com/xoxor4d/iw3xo-radiant) (xoxor4d): CoD4 Radiant modification, C++. CoD4 Radiant is MFC, not Qt, so its hooks will not transfer, but its approach (DLL loaded into the editor, live game-to-editor sync) is the reference design.
 - No public hook, plugin, or injected-DLL project for BO3 Radiant (`Radiant_modtools.exe`) was found in a web search. Community forums (ModMe, Mappers United) not yet searched in depth.
 
+### Launcher "Run" with the split install (2026-10-02, verified)
+
+- With only **Run** ticked, clicking Build in the Launcher does nothing: no child process starts and no error is shown.
+- Cause: `modlauncher.exe` launches `%1/BlackOps3.exe` where `%1` is `TA_GAME_PATH` (the Mod Tools root). Strings in `modlauncher.exe`: `%1/BlackOps3.exe`, `+devmap`, `-fs_game`, `fs_game`, `%1/usermaps/%2`, `TA_GAME_PATH`. `BlackOps3.exe` does not exist under the Mod Tools root, so Run silently fails. This is Steam's default install of app 455130, not a user mistake.
+- Fix applied with Noah's approval: a directory junction `BO3_GAME_ROOT/usermaps` -> `BO3_ROOT/usermaps` (`New-Item -ItemType Junction`). No existing files changed; removing the junction fully reverts it. The game folder now sees built zones (`usermaps/zm_mcp_test/zone/zm_mcp_test.ff`, `.xpak`).
+- `game_launch_map` must therefore launch the game itself from `BO3_GAME_ROOT` rather than drive the Launcher's Run. Expected command: `BlackOps3.exe +devmap <mapname>` (inferred from strings, `VERIFY` by launching).
+
 ### Open questions
 
 - How does the game find maps built in the Mod Tools `usermaps/` folder when the two installs are separate? `BO3_GAME_ROOT` has no `usermaps/` or `mods/` folder. Check what the Launcher passes on the command line, or whether it relies on an environment variable or a junction (`VERIFY`).
