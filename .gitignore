@@ -1,0 +1,37 @@
+# Secrets and local config
+.env
+.env.*
+
+# Never commit anything from the BO3 install
+*.exe
+*.dll
+*.pdb
+*.ff
+*.xpak
+*.gdt
+*.map
+!server/test/fixtures/**/*.map
+
+# Map backups
+backups/
+
+# Build output
+build/
+out/
+node_modules/
+dist/
+coverage/
+*.obj
+*.lib
+*.ilk
+
+# Ghidra project files
+*.gpr
+*.rep/
+*.lock
+*.lock~
+
+# Editors
+.vs/
+.vscode/
+*.user
