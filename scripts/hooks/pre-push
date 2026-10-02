@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Everything pushed to origin is mirrored to public GitHub. Run the public check.
+exec "$(git rev-parse --show-toplevel)/scripts/check-public.sh" --hook

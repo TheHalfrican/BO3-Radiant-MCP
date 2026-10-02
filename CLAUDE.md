@@ -19,10 +19,12 @@ Give Claude Code the same kind of control over Radiant that Blender MCP gives ov
 ## Environment
 
 - Windows 11, x64. Dev machine: i9-14900K, RTX 4090.
-- BO3 root: set in `.env` as `BO3_ROOT` (the Steam `Call of Duty Black Ops III` folder). Never hardcode it.
+- Two install roots, both set in `.env`. Never hardcode either. On this machine Steam installed the Mod Tools as a separate app, not inside the game folder (see `docs/findings.md`).
+  - `BO3_ROOT`: the Mod Tools install (Steam app 455130, folder `Call of Duty Black Ops III 455130`).
+  - `BO3_GAME_ROOT`: the game install (Steam app 311210, folder `Call of Duty Black Ops III`), which holds `BlackOps3.exe`.
 - Toolchain: MSVC (Visual Studio Build Tools, x64), CMake, Node.js LTS, Ghidra.
-- Key paths under `BO3_ROOT` (`VERIFY` each exists):
-  - `bin/radiant_modtools.exe`: the target
+- Key paths under `BO3_ROOT` (all verified to exist on 2026-10-02):
+  - `bin/Radiant_modtools.exe`: the target (note the capital R on disk)
   - `bin/linker_modtools.exe`, `bin/cod2map64.exe`: build tools
   - `map_source/`: .map files
   - `share/raw/scripts/`: stock GSC/CSC, read-only reference
@@ -134,23 +136,25 @@ A full test suite is a requirement, not a nice-to-have. No tool, parser feature,
 
 ## Source control and remotes
 
-Two remotes, same history:
+Gitea is the single source of truth. GitHub is a backup copy:
 
-- `origin`: **private** repo on Noah's Gitea instance. Primary. URL in `.env` as `GITEA_REMOTE`.
-- `github`: **public** repo on GitHub. URL in `.env` as `GITHUB_REMOTE`.
+- `origin`: the repo on Noah's Gitea instance. The only remote we push to. URL in `.env` as `GITEA_REMOTE`.
+- GitHub: a **public** repo that Gitea push-mirrors to automatically. URL in `.env` as `GITHUB_REMOTE` for reference only. Never add it as a remote and never push to it directly.
 
-If either repo or remote does not exist yet, ask Noah to create it. Do not create repos or change visibility yourself.
+Because of the mirror, **anything pushed to `origin` becomes public on GitHub**, so the public pre-push check guards every push to `origin`.
+
+If a repo, remote, or mirror is missing or broken, ask Noah to fix it. Do not create repos, change mirror settings, or change visibility yourself.
 
 ### Workflow
 
 - Work on short-lived branches, merge to `main` when the suite is green.
-- Push `main` to `origin` after every merged step. Push to `github` only after the public pre-push check passes.
+- Push `main` to `origin` after every merged step, with the public pre-push check passing. Gitea mirrors it to GitHub.
 - Conventional commit messages (`feat:`, `fix:`, `re:`, `test:`, `docs:`).
 - Tag phase completions: `phase-0`, `phase-1`, and so on.
 
 ### Public pre-push check (`scripts/check-public.*`, also a pre-push hook)
 
-The GitHub repo is public, so ground rule 5 is enforced mechanically. The check fails the push if the diff contains any of:
+Every push to `origin` is mirrored to the public GitHub repo, so ground rule 5 is enforced mechanically on every push. The check fails the push if the diff contains any of:
 
 - Files from the BO3 install: `.exe`, `.dll`, `.ff`, `.xpak`, `.gsc`/`.csc` copied from `share/raw`, stock `.map` or `.gdt` files.
 - Decompiled or disassembled function bodies (Ghidra export formats, large pseudo-C blocks under `re/`).
@@ -168,7 +172,7 @@ The GitHub repo is public, so ground rule 5 is enforced mechanically. The check 
 ### Public repo hygiene
 
 - `README.md` explains what the project is, that it requires a legally owned copy of BO3 and its Mod Tools, and that it ships no game code or assets.
-- `LICENSE`: ask Noah which license before the first public push.
+- `LICENSE`: MIT.
 
 ## Commands
 
@@ -180,8 +184,9 @@ Fill these in as they are created. Keep this list current.
 - Run bridge unit tests: `TODO`
 - Run live tests (Radiant running, bridge injected): `TODO`
 - Run e2e tests: `TODO`
-- Run public pre-push check: `TODO`
-- Push to both remotes: `TODO`
+- Run public pre-push check: `bash scripts/check-public.sh` (checks commits not yet on `origin/main`; pass a range to check other commits)
+- Install the pre-push hook (once per clone): `git config core.hooksPath scripts/hooks`
+- Push: `git push origin main` (Gitea mirrors to GitHub)
 - Inject into running Radiant: `TODO`
 
 ## Session checklist
@@ -189,5 +194,5 @@ Fill these in as they are created. Keep this list current.
 1. Read `docs/findings.md`.
 2. Check which phase is active and what its exit criteria are.
 3. Work in small steps. Write the tests with the code. Commit after each working step.
-4. Run the suite. Push `main` to `origin`, then to `github` once the public check passes.
+4. Run the suite. Push `main` to `origin` (the pre-push hook runs the public check; Gitea mirrors to GitHub).
 5. Update findings and this file's Commands section before ending.
